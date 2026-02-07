@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VOID_JUMP // HOSTILE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
+        body { background: #000; color: #00F3FF; font-family: 'JetBrains+Mono', monospace; overflow: hidden; margin: 0; touch-action: manipulation; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 1rem; left: 1rem; pointer-events: none; text-shadow: 0 0 10px #00F3FF; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: all; width: 80%; }
+        .btn { background: #00F3FF; color: #000; padding: 1rem 2rem; font-weight: bold; cursor: pointer; margin-top: 1rem; display: inline-block; width: 100%; }
+        .glitch { animation: shake 0.5s infinite; color: #ff0000; }
+        @keyframes shake { 0% { transform: translate(0); } 25% { transform: translate(2px, -2px); } 50% { transform: translate(-2px, 2px); } 100% { transform: translate(0); } }
+    </style>
+</head>
+<body>
+    <div id="ui">SCORE: <span id="score">0</span></div>
+    <div id="msg">
+        <h1 class="text-3xl mb-2">VOID_JUMP</h1>
+        <p class="text-xs text-orange-500 mb-4">TAP SIDES TO JUMP // AVOID SHARDS</p>
+        <div class="btn" onclick="startGame()">INITIATE_SEQUENCE</div>
+    </div>
+    <canvas id="game"></canvas>
+
+<script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const msg = document.getElementById('msg');
+
+    let player, platforms, shards, score, gameActive = false, cameraY = 0, frame = 0;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    function startGame() {
+        platforms = [];
+        shards = [];
+        score = 0;
+        frame = 0;
+        
+        const startY = canvas.height - 100;
+        platforms.push({
+            x: canvas.width / 2 - 40,
+            y: startY,
+            w: 80,
+            h: 12,
+            moveRange: 0,
+            speed: 0,
+            currentX: canvas.width / 2 - 40
+        });
+
+        player = { 
+            x: canvas.width / 2, 
+            y: startY - 10, 
+            vx: 0, 
+            vy: 0,
+            onPlatform: true,
+            platformRef: platforms[0]
+        };
+        
+        cameraY = player.y - canvas.height + 200;
+
+        for(let i=1; i<8; i++) spawnPlatform(startY - (i * 140));
+        
+        gameActive = true;
+        msg.style.display = 'none';
+        requestAnimationFrame(loop);
+    }
+
+    function spawnPlatform(y) {
+        const isMoving = Math.random() > 0.6 && score > 50;
+        platforms.push({
+            x: Math.random() * (canvas.width - 80),
+            y: y,
+            w: 80,
+            h: 12,
+            moveRange: isMoving ? 100 : 0,
+            speed: 0.02 + Math.random() * 0.03,
+            currentX: 0
+        });
+        
+        if (Math.random() > 0.7 && platforms.length > 5) {
+            shards.push({
+                x: Math.random() * canvas.width,
+                y: y - 60,
+                size: 15
+            });
+        }
+    }
+
+    window.addEventListener('touchstart', (e) => {
+        if(!gameActive) return;
+        player.vy = -16;
+        player.vx = (e.touches[0].clientX < canvas.width/2) ? -6 : 6;
+        player.onPlatform = false;
+        player.platformRef = null;
+    });
+
+    function loop() {
+        if(!gameActive) return;
+        frame++;
+
+        if (player.onPlatform && player.platformRef) {
+            // Stick to platform movement perfectly centered
+            player.x = player.platformRef.currentX + (player.platformRef.w / 2);
+            player.y = player.platformRef.y - 10;
+            player.vx = 0;
+            player.vy = 0;
+        } else {
+            // Normal Physics
+            player.vy += 0.7; 
+            player.x += player.vx;
+            player.y += player.vy;
+        }
+
+        if(player.x < 0) player.x = canvas.width;
+        if(player.x > canvas.width) player.x = 0;
+
+        if(player.y < cameraY + canvas.height/2) cameraY = player.y - canvas.height/2;
+
+        platforms.forEach(p => {
+            if (p.moveRange > 0) {
+                p.currentX = (canvas.width/2 - p.w/2) + Math.sin(frame * p.speed) * (canvas.width/2 - p.w/2);
+            } else {
+                p.currentX = p.x;
+            }
+
+            // Landing logic
+            if(!player.onPlatform && player.vy > 0 && player.x > p.currentX && player.x < p.currentX + p.w &&
+               player.y + 10 > p.y && player.y + 10 < p.y + p.h + 10) {
+                player.onPlatform = true;
+                player.platformRef = p;
+                player.vy = 0;
+                player.vx = 0;
+                player.y = p.y - 10;
+                score = Math.max(score, Math.floor((canvas.height - player.y)/10));
+                scoreEl.innerText = score;
+            }
+        });
+
+        shards.forEach((s, i) => {
+            const dx = player.x - s.x;
+            const dy = player.y - s.y;
+            if (Math.sqrt(dx*dx + dy*dy) < 20) gameActive = false;
+        });
+
+        platforms = platforms.filter(p => p.y < cameraY + canvas.height + 100);
+        shards = shards.filter(s => s.y < cameraY + canvas.height + 100);
+        
+        while(platforms.length < 10) {
+            spawnPlatform(platforms[platforms.length-1].y - 140);
+        }
+
+        ctx.fillStyle = '#050505';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.save();
+        ctx.translate(0, -cameraY);
+
+        // Shards
+        ctx.fillStyle = '#ff0000';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ff0000';
+        shards.forEach(s => {
+            ctx.beginPath();
+            ctx.moveTo(s.x, s.y - s.size);
+            ctx.lineTo(s.x + s.size, s.y);
+            ctx.lineTo(s.x, s.y + s.size);
+            ctx.lineTo(s.x - s.size, s.y);
+            ctx.closePath();
+            ctx.fill();
+        });
+
+        // Player
+        ctx.shadowColor = '#00F3FF';
+        ctx.fillStyle = '#00F3FF';
+        ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
+
+        // Platforms
+        ctx.shadowColor = '#FF5F00';
+        ctx.fillStyle = '#FF5F00';
+        platforms.forEach(p => ctx.fillRect(p.currentX, p.y, p.w, p.h));
+
+        ctx.restore();
+
+        if(player.y > cameraY + canvas.height || !gameActive) {
+            gameActive = false;
+            msg.style.display = 'block';
+            msg.querySelector('h1').innerText = "FATAL_ERROR";
+            msg.querySelector('h1').className = "text-3xl mb-2 glitch";
+        } else {
+            requestAnimationFrame(loop);
+        }
+    }
+
+    window.onload = resize;
+</script>
+</body>
+</html>
+
